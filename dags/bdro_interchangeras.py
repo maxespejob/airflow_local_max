@@ -144,8 +144,6 @@ with DAG(
         provide_context=True,
     )
 
-    validate_temporal_tables >> send_error_email_sp1
-
     generate_report_tables = SQLExecuteQueryOperator(
         task_id="generate_report_tables",
         conn_id="mssql_default",
@@ -350,9 +348,13 @@ with DAG(
         python_callable=send_dynamic_error_email,
         provide_context=True,
     )
-    validate_interchange_fee_reconciliation_table >> send_error_email_sp2
+    
+    validate_temporal_tables >> send_error_email_sp1
+
     (
         SP_1
         >> generate_report_tables
         >> [accounting_reconciliation_report, scheme_fee_reconciliation_report]
     )
+
+    validate_interchange_fee_reconciliation_table >> send_error_email_sp2
