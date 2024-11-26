@@ -4,12 +4,8 @@ import pandas as pd
 from airflow import DAG
 from airflow.operators.email import EmailOperator
 from airflow.operators.python import PythonOperator
-from airflow.providers.common.sql.operators.sql import (
-    BranchSQLOperator,
-    SQLExecuteQueryOperator,
-)
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.utils.task_group import TaskGroup
-from dateutil.relativedelta import relativedelta
 from utils.branch_email_util import send_dynamic_error_email
 
 
@@ -101,6 +97,7 @@ def _validate_visa_adt_data(**kwargs):
         0.0 == df_vi_in_validation.to_numpy()
     ).all()
 
+
 default_args = {
     "owner": "Max E.",
     "email": ["max.espejo@intelica.com"],
@@ -165,7 +162,7 @@ with DAG(
             get_mastercard_incoming_adt_table,
             get_mastercard_outgoing_adt_table,
         ] >> validate_mastercard_adt_data
-    
+
     with TaskGroup("visa_validation") as VV:
         get_visa_outgoing_adt_table = SQLExecuteQueryOperator(
             task_id="get_visa_outgoing_adt_table",
@@ -215,3 +212,39 @@ with DAG(
             get_visa_incoming_adt_table,
             get_visa_outgoing_adt_table,
         ] >> validate_visa_adt_data
+
+    send_detailed_email = EmailOperator(
+        task_id="send_detailed_email",
+        to=["max.espejo@intelica.com"],
+        subject="Validation Results for Visa and Mastercard ADT Data",
+        html_content="""
+        <h3>Validation Results</h3>
+        <p><strong>Visa Validation Result:</strong> 
+            {% if ti.xcom_pull(task_ids='visa_validation.validate_visa_adt_data') %}
+                No differences found.
+            {% else %}
+                Differences detected.
+            {% endif %}
+        </p>
+        <p><strong>Mastercard Validation Result:</strong> 
+            {% if ti.xcom_pull(task_ids='mastercard_validation.validate_mastercard_adt_data') %}
+                No differences found.
+            {% else %}
+                Differences detected.
+            {% endif %}
+        </p>
+        <p>For more details, please check the logs or XCom results.</p>
+    """,
+    )
+
+    send_notification_if_dag_success = EmailOperator(
+        task_id="send_notification_if_dag_success",
+        to="max.espejo@intelica.com",
+        subject="The DAG {{ dag.dag_id }} completed successfully",
+        html_content="""
+        <p><strong>Execution date:</strong> {{ execution_date }}</p>
+        <p>Check the task log for more details.</p>
+        """,
+    )
+
+    [VV, MV] >> send_detailed_email >> send_notification_if_dag_success
