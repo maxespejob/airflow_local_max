@@ -1,15 +1,12 @@
 from datetime import datetime
 
-import pandas as pd
 from airflow import DAG
-from airflow.operators.email import EmailOperator
 from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.providers.common.sql.operators.sql import (
     BranchSQLOperator,
     SQLExecuteQueryOperator,
 )
-from airflow.utils.task_group import TaskGroup
 from dateutil.relativedelta import relativedelta
 from utils.branch_email_util import send_dynamic_error_email
 
