@@ -112,18 +112,21 @@ with DAG(
                 "END_DT": "{{params['end_date']}}",
             },
             follow_task_ids_if_false=["send_error_email_sp1"],
-            follow_task_ids_if_true=["SP_1.update_parameters"],
+            follow_task_ids_if_true=["SP_1.update_parameters_table"],
         )
 
         update_parameters_table = SQLExecuteQueryOperator(
             task_id="update_parameters_table",
             conn_id="mssql_default",
             sql="""
+            SELECT 1 AS SUCCESS
+            /*
             UPDATE [ITLCTRL].[dbo].[BRDRO_REPORT_PARAM]
             SET BGN_DT = %(BGN_DT)s, END_DT = %(END_DT)s
             WHERE RPT_ID = 16
+            */
             """,
-            params={
+            parameters={
                 "BGN_DT": "{{params['start_date']}}",
                 "END_DT": "{{params['end_date']}}",
             },
@@ -144,7 +147,12 @@ with DAG(
     generate_report_tables = SQLExecuteQueryOperator(
         task_id="generate_report_tables",
         conn_id="mssql_default",
-        sql="EXEC [ITLCTRL].[dbo].[SP_GETDATACSV4] 2",
+        sql="""
+
+        SELECT 1 AS SUCCESS
+        --EXEC [ITLCTRL].[dbo].[SP_GETDATACSV4] 2
+        
+        """,
     )
 
     with TaskGroup(
