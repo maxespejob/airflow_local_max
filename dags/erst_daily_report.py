@@ -1,6 +1,4 @@
-"""
-
-"""
+""" """
 
 from datetime import datetime
 
@@ -10,6 +8,7 @@ from airflow.operators.email import EmailOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.utils.task_group import TaskGroup
+
 
 def _validate_mastercard_adt_data(**kwargs):
     mastercard_outgoing_data = kwargs["ti"].xcom_pull(

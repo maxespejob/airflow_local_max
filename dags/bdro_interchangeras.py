@@ -13,7 +13,7 @@ from airflow.providers.common.sql.operators.sql import (
 from airflow.utils.task_group import TaskGroup
 from dateutil.relativedelta import relativedelta
 from utils.branch_email_util import send_dynamic_error_email
-
+from pruebas.web_scraping import web_scraping_bnr
 
 def default_dag_parameters() -> tuple[str, str]:
     today = datetime.today()
