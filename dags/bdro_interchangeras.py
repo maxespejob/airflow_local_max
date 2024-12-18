@@ -1,8 +1,9 @@
-""" 
+"""
 Doing
 """
-#Pendiente
-from datetime import datetime
+
+# Pendiente
+from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator, BranchPythonOperator
@@ -13,7 +14,9 @@ from airflow.providers.common.sql.operators.sql import (
 from airflow.utils.task_group import TaskGroup
 from dateutil.relativedelta import relativedelta
 from utils.branch_email_util import send_dynamic_error_email
-from pruebas.web_scraping import web_scraping_bnr
+from pruebas.web_scraping_v2 import web_scraping_bnr
+
+import pandas as pd
 
 def default_dag_parameters() -> tuple[str, str]:
     today = datetime.today()
@@ -25,6 +28,56 @@ def default_dag_parameters() -> tuple[str, str]:
     )
 
     return default_start_date, default_end_date
+
+
+def _verify_correct_web_scraping(**kwargs):
+    # Extraer XComs
+    scraped_exchange_rate = kwargs['ti'].xcom_pull(task_ids='accounting_reconciliation_report.scrape_current_exchange_rate_data_from_bnr')
+    db_exchange_rate = kwargs['ti'].xcom_pull(task_ids='accounting_reconciliation_report.get_past_month_exchange_rate_from_db')
+
+    # Procesar el primer XCom (web scraping)
+    columns_scraped = scraped_exchange_rate[0]
+    data_scraped = scraped_exchange_rate[1:]
+    df_ws = pd.DataFrame(data_scraped, columns=columns_scraped)
+    df_ws_filtered = df_ws[["Month", "EUR", "USD"]].copy()  # Filtrar columnas necesarias
+
+    # Procesar el segundo XCom (base de datos)
+    df_db_unpivoted = pd.DataFrame(db_exchange_rate, columns=["Month", "Currency", "Value"])
+    df_db = df_db_unpivoted.pivot(index="Month", columns="Currency", values="Value").reset_index()
+
+    # Convertir fechas a formato consistente
+    df_ws_filtered["Month"] = pd.to_datetime(df_ws_filtered["Month"]).dt.to_period('M').astype(str)
+    df_db["Month"] = pd.to_datetime(df_db["Month"]).dt.to_period('M').astype(str)
+
+    # Filtrar el mes de interés en df_ws_filtered
+    db_month = df_db["Month"].iloc[0]  # Tomar el único mes en df_db_filtered
+    df_ws_month = df_ws_filtered[df_ws_filtered["Month"] == db_month]
+
+    if df_ws_month.empty:
+        print(f"Advertencia: No se encontraron datos para el mes {db_month} en df_ws_filtered.")
+        return False
+
+    # Comparar valores de EUR y USD
+    eur_db = float(df_db.loc[df_db["Month"] == db_month, "EUR"].values[0])
+    usd_db = float(df_db.loc[df_db["Month"] == db_month, "USD"].values[0])
+
+    eur_ws = df_ws_month["EUR"].astype(float).mean()  # Promedio en caso de múltiples valores
+    usd_ws = df_ws_month["USD"].astype(float).mean()  # Promedio en caso de múltiples valores
+
+    # Comparación
+    tol = 1e-4
+    if abs(eur_ws - eur_db) > tol or abs(usd_ws - usd_db) > tol:
+        print(f"Discrepancia encontrada para el mes {db_month}:")
+        print(f"EUR: Web scraping={eur_ws}, Base de datos={eur_db}")
+        print(f"USD: Web scraping={usd_ws}, Base de datos={usd_db}")
+        return 'send_error_email_sp3'
+    
+    current_usd = df_ws_filtered["USD"].head(1).values
+    current_eur = df_ws_filtered["EUR"].head(1).values
+    print(f"Los valores para el mes {db_month} coinciden correctamente.")
+    kwargs["ti"].xcom_push(key='USD',value = current_usd)
+    kwargs["ti"].xcom_push(key='EUR',value = current_eur)
+    return 'accounting_reconciliation_report.update_exchange_rate_table'
 
 
 def _is_quarter_data(**kwargs) -> str:
@@ -162,8 +215,8 @@ with DAG(
             task_id="validate_interchange_recurrent_table",
             conn_id="mssql_default",
             sql="""
-            SELECT 1 AS SUCCESS
-            /*
+            --SELECT 1 AS SUCCESS
+            
                 SELECT CASE
                     WHEN 
                         OBJECT_ID('[TABRDRO_RPT].[dbo].[RPT_INTERCHANGE_RECURRENT]', 'U') IS NOT NULL
@@ -183,7 +236,7 @@ with DAG(
                     ELSE 'False'
                 END 
                 AS Result;
-                */
+                
             """,
             parameters={
                 "BGN_DT": "{{params['start_date']}}",
@@ -191,6 +244,78 @@ with DAG(
             },
         )
 
+        scrape_current_exchange_rate_data_from_bnr = PythonOperator(
+            task_id="scrape_current_exchange_rate_data_from_bnr",
+            python_callable=web_scraping_bnr,
+            do_xcom_push=True,
+            retries=4,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        get_past_month_exchange_rate_from_db = SQLExecuteQueryOperator(
+            task_id="get_past_month_exchange_rate_from_db",
+            conn_id="mssql_default",
+            sql="""
+                SELECT CONCAT(T1.YEAR_MONTH,'-01'), T2.CRNCY_CD3, T1.XCH_RAT 
+                FROM TABRDRO_RPT.[dbo].[LU_EXCH_RATE_MONTH_BNR] T1
+                LEFT JOIN TABRDRO_RPT.[dbo].[LU_CURRENCY] T2 ON T1.SRC_CRNCY_ID = T2.CRNCY_NUM
+                WHERE CONCAT(T1.YEAR_MONTH,'-01') = DATEADD(MONTH,-1,%(BGN_DT)s)
+            """,
+            do_xcom_push=True,
+            parameters={
+                "BGN_DT": "{{params['start_date']}}",
+                "END_DT": "{{params['end_date']}}",
+            },
+        )
+    
+
+        verify_correct_web_scraping = BranchPythonOperator(
+            task_id = "verify_correct_web_scraping",
+            python_callable = _verify_correct_web_scraping,
+
+        )
+        update_exchange_rate_table = SQLExecuteQueryOperator(
+            task_id="update_exchange_rate_table",
+            conn_id="mssql_default",
+            sql="""
+            ----EUR
+                INSERT INTO TABRDRO_RPT.[dbo].[LU_EXCH_RATE_MONTH_BNR] (YEAR_MONTH, SRC_CRNCY_ID, TGT_CRNCY_ID, XCH_RAT)
+                VALUES(
+                FORMAT(cast(%(BGN_DT)s as date),'yyyy-MM'),
+                978,
+                946,
+                '{{ti.xcom_pull(key="EUR",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}',
+                )
+            ----USD
+                INSERT INTO TABRDRO_RPT.[dbo].[LU_EXCH_RATE_MONTH_BNR] (YEAR_MONTH, SRC_CRNCY_ID, TGT_CRNCY_ID, XCH_RAT)
+                VALUES(
+                FORMAT(cast(%(BGN_DT)s as date),'yyyy-MM'),
+                840,
+                946,
+                '{{ti.xcom_pull(key="USD",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}',
+                )            
+            """,
+            parameters={
+                "BGN_DT": "{{params['start_date']}}",
+                "END_DT": "{{params['end_date']}}",
+            },
+            do_xcom_push = True
+        )
+        (
+            validate_interchange_recurrent_table
+            >> [scrape_current_exchange_rate_data_from_bnr, get_past_month_exchange_rate_from_db]
+            >>verify_correct_web_scraping
+            >> update_exchange_rate_table
+        )
+
+    send_error_email_sp3 = PythonOperator(
+        task_id="send_error_email_sp3",
+        python_callable=send_dynamic_error_email,
+        provide_context=True,
+    )
+
+    verify_correct_web_scraping >> send_error_email_sp3
+    
     with TaskGroup(
         "scheme_fee_reconciliation_report"
     ) as scheme_fee_reconciliation_report:
@@ -271,7 +396,7 @@ with DAG(
                 python_callable=_export_data_to_excel,
             )
             get_fee_reconciliation_table >> export_data_to_excel
-            
+
         extract_data_for_visa = SQLExecuteQueryOperator(
             task_id="extract_data_for_visa",
             conn_id="mssql_default",
@@ -353,7 +478,7 @@ with DAG(
         python_callable=send_dynamic_error_email,
         provide_context=True,
     )
-    
+
     validate_temporal_tables >> send_error_email_sp1
 
     (

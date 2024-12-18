@@ -68,7 +68,8 @@ with DAG(
                @BGN_PRC_DT=%(BGN_PRC_DT)s, 
                @END_PRC_DT=%(END_PRC_DT)s, 
                @BGN_STP_ID=1, 
-               @END_STP_ID=1""",
+               @END_STP_ID=1"""
+        ,
         parameters={
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
@@ -96,13 +97,12 @@ with DAG(
     generate_and_send_report = SQLExecuteQueryOperator(
         task_id="generate_and_send_report",
         conn_id="mssql_default",
-        sql="""
-            EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
+        sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
                @BGN_PRC_DT=%(BGN_PRC_DT)s, 
                @END_PRC_DT=%(END_PRC_DT)s, 
                @BGN_STP_ID=1, 
-               @END_STP_ID=1
-        """,
+               @END_STP_ID=2"""
+        ,
         parameters={
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
