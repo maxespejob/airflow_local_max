@@ -75,6 +75,9 @@ with DAG(
             "END_PRC_DT": "{{params.end_date}}",
         },
         do_xcom_push=True,
+        hook_params={"autocommit": True},
+        show_return_value_in_logs = True,
+        
     )
 
     validate_if_precision_is_greater_than_99 = BranchPythonOperator(
@@ -107,6 +110,8 @@ with DAG(
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
         },
+        hook_params={"autocommit": True},
+        show_return_value_in_logs = True,
     )
 
     send_notification_if_dag_success = EmailOperator(

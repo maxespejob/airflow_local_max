@@ -44,16 +44,14 @@ with DAG(
         task_id="update_visa_transactions_table",
         conn_id="mssql_default",
         sql="""
-        SELECT 1 AS SUCCESS 
-        /*
            EXEC TAERSTHU_RPT.dbo.ETL_VI_FM_TXN 
-           @MONTH = SUBSTRING(CONVERT(VARCHAR,%(BGN_DT)s,112),1,6),
+           @MONTH = %(MONTH)s,
            @BGN_DT = %(BGN_DT)s,
            @END_DT = %(END_DT)s 
-        */
         """,
         do_xcom_push=True,
         parameters={
+            "MONTH": "{{ params.start_date[:7].replace('-', '') }}",
             "BGN_DT": "{{params.start_date}}",
             "END_DT": "{{params.end_date}}",
         },
@@ -63,16 +61,14 @@ with DAG(
         task_id="update_mastercard_transactions_table",
         conn_id="mssql_default",
         sql="""
-        SELECT 1 AS SUCCESS
-        /*
            EXEC TAERSTHU_RPT.dbo.ETL_MC_FM_TXN 
-           @MONTH = SUBSTRING(CONVERT(VARCHAR,%(BGN_DT)s,112),1,6),
+           @MONTH = %(MONTH)s,
            @BGN_DT = %(BGN_DT)s,
            @END_DT = %(END_DT)s 
-        */
         """,
         do_xcom_push=True,
         parameters={
+            "MONTH": "{{ params.start_date[:7].replace('-', '') }}",
             "BGN_DT": "{{params.start_date}}",
             "END_DT": "{{params.end_date}}",
         },
@@ -90,7 +86,7 @@ with DAG(
                             AND EXISTS (
 							SELECT 1 
 							FROM [TAERSTHU_RPT].[dbo].[FM_VI_TXN_FRAC]
-							WHERE [MONTH_ID]= SUBSTRING(CONVERT(VARCHAR,CAST( (%(BGN_DT)s) AS smalldatetime),112),1,6)
+							WHERE [MONTH_ID]= %(MONTH)s
 							)
 						)
                         AND 
@@ -100,7 +96,7 @@ with DAG(
                             AND EXISTS (
 							SELECT 1 
 							FROM [TAERSTHU_RPT].[dbo].[FM_MC_TXN_FRAC] 
-							WHERE [MONTH_ID] = SUBSTRING(CONVERT(VARCHAR,CAST( (%(BGN_DT)s) AS smalldatetime),112),1,6)
+							WHERE [MONTH_ID] = %(MONTH)s
 							)
                         )
                     THEN 'true'
@@ -108,6 +104,7 @@ with DAG(
                 END AS TableStatus;            
         """,
         parameters={
+            "MONTH": "{{ params.start_date[:7].replace('-', '') }}",
             "BGN_DT": "{{params['start_date']}}",
         },
         follow_task_ids_if_false="send_error_email",
