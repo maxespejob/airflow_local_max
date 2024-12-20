@@ -73,7 +73,7 @@ with DAG(
             "END_DT": "{{params.end_date}}",
         },
     )
-    month_value = default_start_date[:7].replace("-", "")
+    #month_value = default_start_date[:7].replace("-", "")
     validate_visa_and_mastercard_tables = BranchSQLOperator(
         task_id="validate_visa_and_mastercard_tables",
         conn_id="mssql_default",
@@ -86,7 +86,7 @@ with DAG(
                             AND EXISTS (
 							SELECT 1 
 							FROM [TAERSTHU_RPT].[dbo].[FM_VI_TXN_FRAC]
-							WHERE [MONTH_ID]= %(MONTH)s
+							WHERE [MONTH_ID]= {{ params['start_date'][:7].replace('-', '') }}
  							)
 						)
                         AND 
@@ -96,7 +96,7 @@ with DAG(
                             AND EXISTS (
 							SELECT 1 
 							FROM [TAERSTHU_RPT].[dbo].[FM_MC_TXN_FRAC] 
-							WHERE [MONTH_ID] = %(MONTH)s
+							WHERE [MONTH_ID] = {{ params['start_date'][:7].replace('-', '') }}
 							)
                         )
                     THEN 'true'
