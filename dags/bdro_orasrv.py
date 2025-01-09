@@ -65,8 +65,8 @@ with DAG(
         task_id="check_and_get_precision",
         conn_id="mssql_default",
         sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
-               @BGN_PRC_DT='2024-12-16', 
-               @END_PRC_DT='2024-12-16', 
+               @BGN_PRC_DT=%(BGN_PRC_DT)s, 
+               @END_PRC_DT=%(END_PRC_DT)s, 
                @BGN_STP_ID=1, 
                @END_STP_ID=1"""
         ,
@@ -101,8 +101,8 @@ with DAG(
         task_id="generate_and_send_report",
         conn_id="mssql_default",
         sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
-               @BGN_PRC_DT='2024-12-16', 
-               @END_PRC_DT='2024-12-16', 
+               @BGN_PRC_DT=%(BGN_PRC_DT)s,
+               @END_PRC_DT=%(END_PRC_DT)s, 
                @BGN_STP_ID=1, 
                @END_STP_ID=2"""
         ,

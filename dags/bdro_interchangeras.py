@@ -284,7 +284,7 @@ with DAG(
                 FORMAT(cast(%(BGN_DT)s as date),'yyyy-MM'),
                 978,
                 946,
-                '{{ti.xcom_pull(key="EUR",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}',
+                '{{ti.xcom_pull(key="EUR",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}'
                 )
             ----USD
                 INSERT INTO TABRDRO_RPT.[dbo].[LU_EXCH_RATE_MONTH_BNR] (YEAR_MONTH, SRC_CRNCY_ID, TGT_CRNCY_ID, XCH_RAT)
@@ -292,7 +292,7 @@ with DAG(
                 FORMAT(cast(%(BGN_DT)s as date),'yyyy-MM'),
                 840,
                 946,
-                '{{ti.xcom_pull(key="USD",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}',
+                '{{ti.xcom_pull(key="USD",task_ids="accounting_reconciliation_report.verify_correct_web_scraping")[0]}}'
                 )            
             """,
             parameters={

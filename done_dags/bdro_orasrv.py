@@ -126,12 +126,14 @@ with DAG(
                @BGN_PRC_DT=%(BGN_PRC_DT)s, 
                @END_PRC_DT=%(END_PRC_DT)s, 
                @BGN_STP_ID=1, 
-               @END_STP_ID=1
+               @END_STP_ID=2
         """,
         parameters={
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
         },
+        do_xcom_push = True,
+        
     )
 
     send_notification_if_dag_success = EmailOperator(
