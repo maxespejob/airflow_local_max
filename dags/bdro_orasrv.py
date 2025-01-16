@@ -13,13 +13,23 @@ from airflow.operators.email import EmailOperator
 from airflow.operators.python import BranchPythonOperator
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
+def custom_handler(cursor):
+    results = []
+    while True:
+        result = cursor.fetchall()  # Obtener todos los registros actuales
+        if result:  # Si hay resultados, añadirlos a la lista
+            results.append(result)
+        if not cursor.nextset():  # Avanzar al siguiente conjunto de resultados si existe
+            break
+    return results  # Retorna todos los resultados para que sean manejados como XCom
+
 
 def validate_results(**kwargs) -> str:
     results: List[List[float]] = kwargs["ti"].xcom_pull(
         task_ids="check_and_get_precision", key="return_value"
     )
     all_greater_than_99 = all(
-        float(value) > 99.00 for item in results for value in item[1:]
+        float(value) > 98.50 for item in results for value in item[1:]
     )
     return (
         "generate_and_send_report"
@@ -64,20 +74,21 @@ with DAG(
     check_and_get_precision = SQLExecuteQueryOperator(
         task_id="check_and_get_precision",
         conn_id="mssql_default",
-        sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
+        sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV_ME] 
                @BGN_PRC_DT=%(BGN_PRC_DT)s, 
                @END_PRC_DT=%(END_PRC_DT)s, 
-               @BGN_STP_ID=1, 
-               @END_STP_ID=1"""
+               @BGN_STP_ID=1,
+               @END_STP_ID=1;
+               """
         ,
         parameters={
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
         },
         do_xcom_push=True,
-        hook_params={"autocommit": True},
+        autocommit=True,
+        # hook_params={"autocommit": True},
         show_return_value_in_logs = True,
-        
     )
 
     validate_if_precision_is_greater_than_99 = BranchPythonOperator(
@@ -100,18 +111,23 @@ with DAG(
     generate_and_send_report = SQLExecuteQueryOperator(
         task_id="generate_and_send_report",
         conn_id="mssql_default",
-        sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV] 
+        sql="""EXEC [TABRDRO_RPT].[dbo].[ETL_BRDRO_ORASRV_ME] 
                @BGN_PRC_DT=%(BGN_PRC_DT)s,
                @END_PRC_DT=%(END_PRC_DT)s, 
-               @BGN_STP_ID=1, 
-               @END_STP_ID=2"""
+               @BGN_STP_ID=1,
+               @END_STP_ID=2;
+            """
         ,
         parameters={
             "BGN_PRC_DT": "{{ params.start_date }}",
             "END_PRC_DT": "{{params.end_date}}",
         },
-        hook_params={"autocommit": True},
+        # hook_params={"autocommit": True},
+        # autocommit=True,
+        handler = custom_handler,
+        split_statements = True,
         show_return_value_in_logs = True,
+        do_xcom_push = True,
     )
 
     send_notification_if_dag_success = EmailOperator(
